@@ -1,0 +1,145 @@
+/* Setting up the intital layouts */
+
+body {
+    min-height: 100vh;
+}
+
+#title-div{
+    min-height: 10vh;
+    max-height: 10vh;
+}
+
+#form-div{
+    min-height: 20vh;
+    max-height: 20vh;
+}
+
+#graph-container{
+    min-height: 70vh;
+    max-height: 70vh;
+    margin: 0 1px 0 1px;
+}
+
+#aggregation-panel {
+    
+    min-height: 70vh !important;
+    max-height: 70vh !important;
+    
+}
+
+#aggregation-panel-child{
+    min-height: 70vh;
+    max-height: 70vh;
+    padding: 20px;
+    background-color: #2c2c2e;
+    font-family: Arial, sans-serif;
+    overflow-y: auto;
+}
+
+/* Styling related to main elements */
+
+.title {
+    color: #fff;
+}
+
+.box {
+    background-color: #2c2c2e;
+    color: #fff;
+}
+
+.button:hover {
+    background-color: #4c4c4e;
+    border-color: #4c4c4e;
+    color: #fff;
+}
+
+button[disabled] {
+    background-color: #2c2c2e !important;
+    border-color: #ff7f0e !important;
+    color: #fff !important;
+    cursor: not-allowed !important;
+}
+
+
+
+/* Graph related styles */
+
+.node {
+    fill: #69b3a2;
+    stroke: #000;
+    stroke-width: 1.5px;
+    cursor: pointer;
+    transition: fill 0.3s;
+}
+
+.node:hover {
+    fill: #696969;
+}
+
+.edge {
+    stroke: #999;
+    stroke-opacity: 0.8;
+    stroke-width: 1.5px;
+    marker-end: url(#arrowhead);
+}
+
+.node-label {
+    font-size: 14px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    fill: #fff;
+    pointer-events: none;
+}
+
+.node-features {
+    font-size: 12px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    fill: #fff;
+    pointer-events: none;
+}
+
+.message {
+    fill: #ff7f0e;
+    stroke: #ff7f0e;
+    stroke-width: 2px;
+    pointer-events: none;
+}
+
+.arrow-icon {
+    margin: 0 10px;
+    font-size: 18px;
+    color: #999;
+}
+
+.icon {
+    color: #fff;
+}
+
+/*Styling related to aggregation math*/
+
+.aggregation-step {
+    margin-bottom: 20px;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.5s, transform 0.5s;
+    min-height: 70vh;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.aggregation-step.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.math-equation {
+    font-size: 18px;
+    background-color: #3c3c3e;
+    padding: 10px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+

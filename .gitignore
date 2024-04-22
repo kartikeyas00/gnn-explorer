@@ -1,0 +1,10 @@
+__pycache__
+env
+.vscode
+cred.env
+.env
+flask-accounting.sock
+flask-accounting.py
+GoogleSheets-python-credentials.json
+.venv
+.DS_Store
