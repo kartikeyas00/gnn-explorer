@@ -1,313 +1,407 @@
-document.getElementById("messagePassingButton").disabled = true;
-document.getElementById("featureAggregationButton").disabled = true;
-//document.getElementById("resetButton").disabled = true;
+const MESSAGE_DURATION = 720;
+const UPDATE_DURATION = 520;
+const STEP_PAUSE = 180;
 
-/** * Global Variables * * **/
-let svg = null;
-const messageDuration = 1000;
-const aggregationDuration = 1000;
-let timeoutId;
-//let aggregationTimeoutID;
-let nodes = [];
-let edges = [];
-let initialNodes = [];
+const appState = {
+    graphStore: new window.GNNCore.GraphStore(),
+    model: null,
+    renderer: null,
+    panel: null,
+    activeLayerResult: null,
+    isAnimating: false,
+    runToken: 0,
+    layerHistory: []
+};
 
-function randomInteger(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+const controls = {
+    startButton: document.getElementById("startButton"),
+    resetButton: document.getElementById("resetButton"),
+    graphButtons: document.getElementById("graph-buttons"),
+    graphCaption: document.getElementById("graph-caption"),
+    nodeCount: document.getElementById("nodeCount"),
+    maxNeighborCount: document.getElementById("maxNeighborCount"),
+    modelSelect: document.getElementById("modelSelect"),
+    modelLabel: document.getElementById("modelLabel"),
+    modelDescription: document.getElementById("modelDescription"),
+    modelStages: document.getElementById("modelStages")
+};
+
+const STAGE_ACTIONS = {
+    messagePassing: startMessagePassing,
+    update: startUpdate
+};
+
+function getAvailableModels() {
+    return window.GNNCore.modelRegistry.list();
 }
 
-function arraysHaveSameElements(arr1, arr2) {
-    const sortedArr1 = arr1.slice().sort();
-    const sortedArr2 = arr2.slice().sort();
-
-    if (sortedArr1.length !== sortedArr2.length) {
-        return false;
-    }
-
-    for (let i = 0; i < sortedArr1.length; i++) {
-        if (sortedArr1[i] !== sortedArr2[i]) {
-            return false;
-        }
-    }
-
-    return true;
+function getSelectedModelDefinition() {
+    return getAvailableModels().find(model => model.key === controls.modelSelect.value) || getAvailableModels()[0];
 }
 
-function createGraph() {
-    const nodeCount = parseInt(document.getElementById("nodeCount").value);
-    let maxNeighborCount = parseInt(document.getElementById("maxNeighborCount").value);
-    maxNeighborCount = nodeCount < maxNeighborCount ? nodeCount : maxNeighborCount;
-    nodes = [];
-    edges = [];
-
-    // Create nodes with random features
-    for (let i = 0; i < nodeCount; i++) {
-        const node = { id: String.fromCharCode(65 + i), features: [Math.random(), Math.random()] };
-        nodes.push(node);
+function getStageButtonId(stageKey) {
+    if (stageKey === "messagePassing") {
+        return "messagePassingButton";
     }
 
-    // Create edges
-    for (let i = 0; i < nodeCount; i++) {
-        let currentNode = nodes[i];
-        let numberOfEdges = randomInteger(nodeCount <= 1 ? 0 : 1, nodeCount <= 1 ? 0 : maxNeighborCount);
-        console.log(numberOfEdges);
-        let nodesWithoutSource = Array.from(nodes);
-        nodesWithoutSource.splice(nodes.indexOf(currentNode), 1);
-        let nodesWithoutSourceRandom = nodesWithoutSource.sort(function () { return 0.5 - Math.random() }).slice(0, numberOfEdges);
-
-        for (let j = 0; j < nodesWithoutSourceRandom.length; j++) {
-            const edge = { source: currentNode.id, target: nodesWithoutSourceRandom[j].id };
-            let exists = edges.some(element => {
-                const a = [element.source, element.target];
-                const b = [edge.target, edge.source];
-                return arraysHaveSameElements(a, b);
-            });
-            if (!exists) { edges.push(edge); }
-        }
+    if (stageKey === "update") {
+        return "featureAggregationButton";
     }
 
-    initialNodes = nodes.map(node => ({ id: node.id, features: [...node.features] }));
-
-    // Clear previous graph
-    d3.select("#graph").html("");
-
-    // Render the new graph
-    renderGraph();
-    document.getElementById("graph-buttons").style.display = "block";
+    return `stageButton-${stageKey}`;
 }
 
-function renderGraph() {
-    const width = 600;
-    const height = 400;
-    const nodeRadius = 30;
+function getStageButton(stageKey) {
+    return document.getElementById(getStageButtonId(stageKey));
+}
 
-    svg = d3.select("#graph")
-        .append("svg")
-        .attr("width", width)
-        .attr("height", height);
+function getStageLabel(model, stageKey) {
+    const stage = model.stageDefinitions.find(candidate => candidate.key === stageKey);
+    return stage ? stage.label : stageKey;
+}
 
-    svg.append("defs").append("marker")
-        .attr("id", "arrowhead")
-        .attr("viewBox", "-0 -5 10 10")
-        .attr("refX", 20)
-        .attr("refY", 0)
-        .attr("orient", "auto")
-        .attr("markerWidth", 8)
-        .attr("markerHeight", 8)
-        .attr("xoverflow", "visible")
-        .append("svg:path")
-        .attr("d", "M 0,-5 L 10 ,0 L 0,5")
-        .attr("fill", "#999")
-        .style("stroke", "none");
+function applyControlState(options) {
+    const disabledByKey = options.stageDisabledByKey || {};
+    const defaultStageDisabled = options.defaultStageDisabled !== undefined ? options.defaultStageDisabled : true;
 
-    const simulation = d3.forceSimulation(nodes)
-        .force("link", d3.forceLink(edges).id(d => d.id).distance(120))
-        .force("charge", d3.forceManyBody().strength(-400))
-        .force("center", d3.forceCenter(width / 2, height / 2));
+    controls.graphButtons.style.display = options.showGraphButtons ? "flex" : "none";
+    controls.startButton.disabled = Boolean(options.startDisabled);
+    controls.modelSelect.disabled = Boolean(options.modelSelectDisabled);
 
-    const link = svg.append("g")
-        .selectAll("line")
-        .data(edges)
-        .join("line")
-        .attr("class", "edge");
+    if (appState.model) {
+        appState.model.stageDefinitions.forEach(stage => {
+            const button = getStageButton(stage.key);
+            const handler = STAGE_ACTIONS[stage.key];
 
-    const node = svg.append("g")
-        .selectAll("circle")
-        .data(nodes)
-        .join("circle")
-        .attr("id", d => `node-${d.id}`)
-        .attr("class", "node")
-        .attr("r", nodeRadius)
-        .on("click", (event, d) => {
-            alert(`Node ${d.id} Features: [${d.features.join(", ")}]`);
+            if (!button) {
+                return;
+            }
+
+            button.disabled = !handler || (Object.prototype.hasOwnProperty.call(disabledByKey, stage.key)
+                ? Boolean(disabledByKey[stage.key])
+                : defaultStageDisabled);
         });
+    }
+}
 
-    const nodeLabel = svg.append("g")
-        .selectAll("text")
-        .data(nodes)
-        .join("text")
-        .attr("class", "node-label")
-        .text(d => d.id);
+function setCaption(text) {
+    controls.graphCaption.textContent = text;
+}
 
-    const nodeFeatures = svg.append("g")
-        .selectAll("text")
-        .data(nodes)
-        .join("text")
-        .attr("id", d => `node-features-${d.id}`)
-        .attr("class", "node-features")
-        .attr("y", 15)
-        .text(d => `[${d.features.map(val => val.toFixed(2)).join(", ")}]`);
-
-    simulation.on("tick", () => {
-        link
-            .attr("x1", d => d.source.x)
-            .attr("y1", d => d.source.y)
-            .attr("x2", d => d.target.x)
-            .attr("y2", d => d.target.y);
-
-        node
-            .attr("cx", d => d.x)
-            .attr("cy", d => d.y);
-
-        nodeLabel
-            .attr("x", d => d.x)
-            .attr("y", d => d.y);
-
-        nodeFeatures
-            .attr("x", d => d.x)
-            .attr("y", d => d.y + nodeRadius + 15);
+function wait(duration) {
+    return new Promise(resolve => {
+        window.setTimeout(resolve, duration);
     });
+}
+
+function beginRun() {
+    appState.runToken += 1;
+    appState.isAnimating = true;
+    return appState.runToken;
+}
+
+function cancelActiveRun() {
+    appState.runToken += 1;
+    appState.isAnimating = false;
+}
+
+function isRunActive(runToken) {
+    return appState.runToken === runToken;
+}
+
+function hasGraph() {
+    return appState.graphStore.getNodes().length > 0;
+}
+
+function populateModelSelect() {
+    controls.modelSelect.innerHTML = getAvailableModels().map(model => {
+        return `<option value="${model.key}">${model.label}</option>`;
+    }).join("");
+}
+
+function updateModelSummary() {
+    const definition = getSelectedModelDefinition();
+
+    controls.modelLabel.textContent = definition.label;
+    controls.modelDescription.textContent = definition.description;
+    controls.modelStages.innerHTML = definition.stageDefinitions.map(stage => {
+        return `<span class="model-stage-chip">${stage.label}</span>`;
+    }).join("");
+}
+
+function renderStageButtons() {
+    controls.graphButtons.innerHTML = "";
+
+    appState.model.stageDefinitions.forEach((stage, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "button is-primary architecture-stage-button";
+        button.id = getStageButtonId(stage.key);
+        button.dataset.stageKey = stage.key;
+        button.textContent = stage.label;
+
+        const handler = STAGE_ACTIONS[stage.key];
+        if (handler) {
+            button.addEventListener("click", handler);
+        }
+
+        controls.graphButtons.appendChild(button);
+
+        if (index < appState.model.stageDefinitions.length - 1) {
+            const separator = document.createElement("span");
+            separator.className = "stage-separator";
+            separator.setAttribute("aria-hidden", "true");
+            separator.textContent = "→";
+            controls.graphButtons.appendChild(separator);
+        }
+    });
+}
+
+function createCompletedLayerHistoryEntry(layerResult, model) {
+    return {
+        layerNumber: layerResult.layerNumber,
+        modelLabel: layerResult.modelLabel,
+        stageDefinitions: model.stageDefinitions.map(stage => ({ ...stage })),
+        weightMatrix: window.GNNCore.cloneMatrix(layerResult.weightMatrix),
+        messageSteps: layerResult.steps.slice(),
+        updateSteps: layerResult.steps.slice(),
+        statusLabel: "Complete"
+    };
+}
+
+function setModel(modelKey) {
+    appState.model = window.GNNCore.modelRegistry.create(modelKey);
+    updateModelSummary();
+    renderStageButtons();
+
+    if (!hasGraph()) {
+        appState.panel.renderWelcome(appState.model);
+        setCaption(`${appState.model.label} walkthrough with architecture-specific stages.`);
+        applyControlState({
+            showGraphButtons: false,
+            startDisabled: false,
+            modelSelectDisabled: false,
+            defaultStageDisabled: true
+        });
+        return;
+    }
+
+    appState.activeLayerResult = null;
+    appState.renderer.resetVisualState();
+    appState.panel.renderGraphReady(appState.model, appState.graphStore, appState.layerHistory);
+    setCaption(`${appState.model.label} selected. Run Message Passing to begin the next layer on the current graph.`);
+    applyControlState({
+        showGraphButtons: true,
+        startDisabled: false,
+        modelSelectDisabled: false,
+        defaultStageDisabled: true,
+        stageDisabledByKey: {
+            messagePassing: false,
+            update: true
+        }
+    });
+}
+
+function initializeExplorer() {
+    appState.renderer = new window.GNNRenderer.GraphRenderer({ graphSelector: "#graph" });
+    appState.panel = new window.GNNPanel.ExplorerPanel({ panelSelector: "#aggregation-panel" });
+
+    populateModelSelect();
+    controls.modelSelect.addEventListener("change", event => {
+        if (appState.isAnimating || appState.activeLayerResult) {
+            controls.modelSelect.value = appState.model.key;
+            return;
+        }
+
+        setModel(event.target.value);
+    });
+
+    setModel(controls.modelSelect.value || "gcn");
 }
 
 function startGraph() {
-    createGraph();
-    //svg.style("visibility", "visible");
-    d3.select("#messagePassingButton").attr("disabled", null);
-}
+    if (appState.isAnimating) {
+        return;
+    }
 
-function startMessagePassing() {
-    let totalDelay = 0;
+    const nodeCount = parseInt(controls.nodeCount.value, 10);
+    const maxNeighborCount = parseInt(controls.maxNeighborCount.value, 10);
 
-    nodes.forEach((node, nodeIndex) => {
-        const neighbors = edges.filter(edge => edge.source.id === node.id || edge.target.id === node.id)
-            .map(edge => edge.source.id === node.id ? nodes.find(n => n.id === edge.target.id) : nodes.find(n => n.id === edge.source.id));
-
-        timeoutId = setTimeout(() => {
-            const messages = [];
-
-            neighbors.forEach((neighbor, neighborIndex) => {
-                const messageGroup = svg.append("g")
-                    .attr("class", "message-group");
-
-                const messageIcon = messageGroup.append("text")
-                    .attr("class", "message-icon")
-                    .attr("x", neighbor.x)
-                    .attr("y", neighbor.y)
-                    .attr("text-anchor", "middle")
-                    .attr("dominant-baseline", "central")
-                    .attr("class", "fa")
-                    .attr("font-weight", 900)
-                    .attr("font-size", "20px")
-                    .attr("fill", "#FFC300")
-                    .text(function (d) { return '\uf0e0' });
-
-                messages.push(messageIcon);
-            });
-
-            messages.forEach(message => {
-                message.transition()
-                    .duration(messageDuration)
-                    .attr("x", node.x)
-                    .attr("y", node.y)
-                    .on("start", () => {
-                        d3.select(`#node-${node.id}`)
-                            .style("fill", "orange");
-                    })
-                    .on("end", () => {
-                        message.remove();
-                        d3.select(`#node-${node.id}`)
-                            .style("fill", "#69b3a2")
-                    });
-            });
-        }, totalDelay);
-
-        totalDelay += messageDuration;
+    cancelActiveRun();
+    appState.activeLayerResult = null;
+    appState.layerHistory = [];
+    appState.graphStore.createRandomGraph(nodeCount, maxNeighborCount);
+    appState.renderer.render(appState.graphStore.getNodes(), appState.graphStore.getRenderableEdges());
+    appState.renderer.resetVisualState();
+    appState.panel.renderGraphReady(appState.model, appState.graphStore, appState.layerHistory);
+    setCaption(`${appState.model.label} is ready. Start with Message Passing to inspect how each node collects information from its neighborhood.`);
+    applyControlState({
+        showGraphButtons: true,
+        startDisabled: false,
+        modelSelectDisabled: false,
+        defaultStageDisabled: true,
+        stageDisabledByKey: {
+            messagePassing: false,
+            update: true
+        }
     });
-
-    timeoutId = setTimeout(() => {
-        d3.select("#featureAggregationButton").attr("disabled", null);
-        d3.select("#messagePassingButton").attr("disabled", true);
-    }, totalDelay);
 }
 
-// Step 3: Feature Aggregation and Update
-// Simple feature aggregation is being used
-// Sum of all the neighboring node's features + current node's features
-// Finally each feature inside the feature array is divided by the
-// length of (neighboring nodes and current nodes).
-function startFeatureAggregation() {
-    const aggregationPanel = document.getElementById('aggregation-panel');
-    const aggregationPanelChild = document.createElement("div");
-    aggregationPanelChild.id = "aggregation-panel-child";
-    console.log(aggregationPanelChild);
-    aggregationPanel.append(aggregationPanelChild);
-    const nodes_ = structuredClone(nodes);
+async function startMessagePassing() {
+    if (appState.isAnimating || !hasGraph()) {
+        return;
+    }
 
-    nodes.forEach((node, index) => {
-        timeoutId = setTimeout(() => {
-            const neighbors = edges.filter(edge => edge.source.id === node.id || edge.target.id === node.id)
-                .map(edge => edge.source.id === node.id ? nodes_.find(n => n.id === edge.target.id) : nodes_.find(n => n.id === edge.source.id));
+    const runToken = beginRun();
+    const layerResult = appState.model.compute(appState.graphStore);
+    appState.activeLayerResult = layerResult;
 
-            const neighborFeatures = neighbors.map(neighbor => neighbor.features);
+    applyControlState({
+        showGraphButtons: true,
+        startDisabled: true,
+        modelSelectDisabled: true,
+        defaultStageDisabled: true
+    });
+    setCaption(`Layer ${layerResult.layerNumber}: ${getStageLabel(appState.model, "messagePassing")} is showing how ${appState.model.label} moves information across the neighborhood.`);
 
-            if (neighborFeatures.length > 0) {
-                const currentFeatures = node.features;
-                const aggregatedFeatures = neighborFeatures.reduce((acc, features) => {
-                    return acc.map((val, i) => val + features[i]);
-                }).map((val, i) => val + currentFeatures[i]);
+    try {
+        for (let index = 0; index < layerResult.steps.length; index += 1) {
+            const step = layerResult.steps[index];
 
-                const updatedFeatures = aggregatedFeatures.map(val => val / (neighborFeatures.length + 1));
-                node.features = updatedFeatures;
-
-                const aggregationStep = document.createElement("div");
-                aggregationStep.className = "aggregation-step";
-                //aggregationPanel.innerHTML = "";
-                aggregationPanelChild.prepend(aggregationStep);
-
-                const aggregationStepTitle = document.createElement("h4");
-                aggregationStepTitle.className = "title is-4";
-                aggregationStepTitle.textContent = `Aggregation for Node ${node.id}`;
-                aggregationStep.appendChild(aggregationStepTitle);
-
-                const mathEquation = document.createElement("div");
-                mathEquation.className = "math-equation";
-                aggregationStep.appendChild(mathEquation);
-
-                const nodeFeatureTex = `\\mathbf{f}_{${node.id}}`;
-                const neighborFeaturesTex = neighborFeatures.map((features, i) => `\\mathbf{f}_{${neighbors[i].id}}`).join(' + ');
-                const aggregatedFeaturesTex = `(${nodeFeatureTex} + ${neighborFeaturesTex})`;
-                const updatedFeatureTex = `\\frac{${aggregatedFeaturesTex}}{${neighborFeatures.length + 1}}`;
-
-                const latexEquation = `\\mathbf{f}_{${node.id}}' = ${updatedFeatureTex}`;
-
-                mathEquation.innerHTML = (`
-                    <p>$$${latexEquation}$$</p>
-                    <p>$$${nodeFeatureTex} = [${currentFeatures.map(val => val.toFixed(2)).join(', ')}]$$</p>
-                    ${neighborFeatures.map((features, i) => `<p>$$\\mathbf{f}_{${neighbors[i].id}} = [${features.map(val => val.toFixed(2)).join(', ')}]$$</p>`).join('')}
-                    <p>$$(${nodeFeatureTex} + ${neighborFeaturesTex}) = [${aggregatedFeatures.map(val => val.toFixed(2)).join(', ')}]$$</p>
-                    <p>$$${updatedFeatureTex} = [${updatedFeatures.map(val => val.toFixed(2)).join(', ')}]$$</p>
-                `);
-
-                setTimeout(() => {
-                    aggregationStep.classList.add("visible");
-            }, 100);
-
-                MathJax.typeset();
+            if (!isRunActive(runToken)) {
+                return;
             }
 
-            d3.select(`#node-features-${node.id}`)
-                .text(`[${node.features.map(val => val.toFixed(2)).join(", ")}]`);
+            appState.panel.renderMessageStep(
+                appState.model,
+                appState.graphStore,
+                layerResult,
+                step,
+                layerResult.steps.slice(0, index),
+                appState.layerHistory
+            );
+            await appState.renderer.animateMessages(step, { duration: MESSAGE_DURATION });
 
-            d3.select(`#node-${node.id}`)
-                .style("fill", "red");
-        }, index * aggregationDuration * 2);
+            if (!isRunActive(runToken)) {
+                return;
+            }
+
+            await wait(STEP_PAUSE);
+        }
+
+        if (!isRunActive(runToken)) {
+            return;
+        }
+
+        appState.renderer.resetVisualState();
+        appState.panel.renderMessagePhaseComplete(appState.model, appState.graphStore, layerResult, appState.layerHistory);
+        setCaption(`Layer ${layerResult.layerNumber}: Message Passing is complete. Update is ready.`);
+        applyControlState({
+            showGraphButtons: true,
+            startDisabled: false,
+            modelSelectDisabled: true,
+            defaultStageDisabled: true,
+            stageDisabledByKey: {
+                messagePassing: true,
+                update: false
+            }
+        });
+    } finally {
+        if (isRunActive(runToken)) {
+            appState.isAnimating = false;
+        }
+    }
+}
+
+async function startUpdate() {
+    if (appState.isAnimating || !appState.activeLayerResult) {
+        return;
+    }
+
+    const layerResult = appState.activeLayerResult;
+    const runToken = beginRun();
+
+    applyControlState({
+        showGraphButtons: true,
+        startDisabled: true,
+        modelSelectDisabled: true,
+        defaultStageDisabled: true
     });
+    setCaption(`Layer ${layerResult.layerNumber}: ${getStageLabel(appState.model, "update")} is applying ${appState.model.label}'s update rule to every stored neighborhood summary.`);
 
-    d3.select("#featureAggregationButton").attr("disabled", true);
+    try {
+        for (let index = 0; index < layerResult.steps.length; index += 1) {
+            const step = layerResult.steps[index];
+
+            if (!isRunActive(runToken)) {
+                return;
+            }
+
+            appState.panel.renderApplyStep(
+                appState.model,
+                appState.graphStore,
+                layerResult,
+                step,
+                layerResult.steps.slice(0, index),
+                appState.layerHistory
+            );
+            await appState.renderer.animateNodeUpdate(step, { duration: UPDATE_DURATION });
+
+            if (!isRunActive(runToken)) {
+                return;
+            }
+
+            await wait(STEP_PAUSE);
+        }
+
+        if (!isRunActive(runToken)) {
+            return;
+        }
+
+        appState.graphStore.applyLayerResult(layerResult);
+        appState.renderer.syncFeatureLabels();
+        appState.renderer.resetVisualState();
+        appState.layerHistory = appState.layerHistory.concat(createCompletedLayerHistoryEntry(layerResult, appState.model));
+        appState.activeLayerResult = null;
+        appState.panel.renderLayerComplete(appState.model, appState.graphStore, appState.layerHistory);
+        setCaption(`Layer ${appState.graphStore.layerIndex} is complete. Message Passing is ready for the next ${appState.model.label} layer.`);
+        applyControlState({
+            showGraphButtons: true,
+            startDisabled: false,
+            modelSelectDisabled: false,
+            defaultStageDisabled: true,
+            stageDisabledByKey: {
+                messagePassing: false,
+                update: true
+            }
+        });
+    } finally {
+        if (isRunActive(runToken)) {
+            appState.isAnimating = false;
+        }
+    }
 }
 
 function resetGraph() {
-    console.log(timeoutId);
-    //console.log(messagePassingTimeoutID);
-    clearTimeout(timeoutId);
-    //clearTimeout(messagePassingTimeoutID);
-
-    d3.selectAll(".node").style("fill", "#69b3a2");
-    svg.style("visibility", "hidden");
-
-    d3.select("#messagePassingButton").attr("disabled", true);
-    d3.select("#featureAggregationButton").attr("disabled", true);
-    
-    const aggregationPanel = document.getElementById('aggregation-panel');
-    aggregationPanel.removeChild(document.getElementById("aggregation-panel-child"));
+    cancelActiveRun();
+    appState.activeLayerResult = null;
+    appState.layerHistory = [];
+    appState.graphStore = new window.GNNCore.GraphStore();
+    appState.renderer.clearGraph();
+    appState.panel.renderWelcome(appState.model);
+    setCaption(`${appState.model.label} walkthrough with architecture-specific stages.`);
+    applyControlState({
+        showGraphButtons: false,
+        startDisabled: false,
+        modelSelectDisabled: false,
+        defaultStageDisabled: true
+    });
 }
+
+initializeExplorer();
+
+window.startGraph = startGraph;
+window.startMessagePassing = startMessagePassing;
+window.startFeatureAggregation = startUpdate;
+window.startUpdate = startUpdate;
+window.resetGraph = resetGraph;

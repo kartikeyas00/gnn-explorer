@@ -8,3 +8,4 @@ flask-accounting.py
 GoogleSheets-python-credentials.json
 .venv
 .DS_Store
+.github

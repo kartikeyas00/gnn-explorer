@@ -9,13 +9,14 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
         integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A=="
         crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <link rel="stylesheet" href="gnn_explorer.css">
+    <link rel="stylesheet" href="gnn_explorer.css?v=20260514i">
 </head>
 
 <body class="has-background-dark">
     <section class="section mx-0">
         <div id="title-div">
             <h1 class="title has-text-centered is-1">Graph Neural Network Explorer</h1>
+            <p class="subtitle has-text-centered" id="project-subtitle">An interactive walkthrough of graph neural network message passing, updates, and layer-by-layer math.</p>
         </div>
 
         <div class="columns" id="form-div">
@@ -56,15 +57,24 @@
                 <div class="box">
                     <div id="graph-container">
                         <div id="graph"></div>
-                        <div id="graph-buttons" class="buttons" style="display: none;">
-                            <button class="button is-primary" id="messagePassingButton" onclick="startMessagePassing()"
-                                disabled>Start Message Passing</button>
-                            <span class="icon">
-                                <i class="fa-solid fa-angles-right"></i>
-                            </span>
-                            <button class="button is-primary" id="featureAggregationButton"
-                                onclick="startFeatureAggregation()" disabled>Start Feature Aggregation</button>
+                        <div id="architecture-panel" class="architecture-panel">
+                            <div class="field architecture-select-field">
+                                <label class="label has-text-white" for="modelSelect">GNN Architecture</label>
+                                <div class="control">
+                                    <div class="select is-fullwidth architecture-select-wrapper">
+                                        <select id="modelSelect"></select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="architecture-summary">
+                                <p class="architecture-summary-eyebrow">Selected Architecture</p>
+                                <h3 class="architecture-summary-title" id="modelLabel"></h3>
+                                <p class="architecture-summary-copy" id="modelDescription"></p>
+                                <div class="model-stage-chip-row" id="modelStages"></div>
+                            </div>
                         </div>
+                        <div id="graph-buttons" class="buttons architecture-stage-buttons" style="display: none;"></div>
+                        <p id="graph-caption" class="graph-caption">Choose an architecture to inspect its message passing and update steps.</p>
                     </div>
                 </div>
             </div>
@@ -79,8 +89,10 @@
     </section>
 </body>
 <script src="https://d3js.org/d3.v6.min.js"></script>
-<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
 <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-<script src="gnn_explorer.js"></script>
+<script src="gnn_core.js?v=20260514i"></script>
+<script src="graph_renderer.js?v=20260514i"></script>
+<script src="gnn_panel.js?v=20260514i"></script>
+<script src="gnn_explorer.js?v=20260514i"></script>
 
 </html>
